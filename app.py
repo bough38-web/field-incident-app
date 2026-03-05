@@ -130,14 +130,18 @@ def landing_page():
     st.markdown("<p style='text-align: center; color: gray;'>[지사/현장] 사건 등록 및 [본부/지사] 통계 모니터링을 위한 통합 포털입니다.</p>", unsafe_allow_html=True)
     st.write("")
     
-    # 랜딩 박스들을 가로로 배치 (모바일에서는 Streamlit이 자동으로 세로 스태킹함)
-    col1, col2 = st.columns(2)
+    # 랜딩 박스들을 감싸는 컨테이너 생성 및 CSS 클래스 적용
+    st.markdown("<div class='landing-container'>", unsafe_allow_html=True)
+    
+    # 랜딩 박스들을 가로로 배치
+    # 데스크탑에서는 중앙의 2개 컬럼만 사용하도록 양옆 여백 컬럼 추가
+    margin_left, col1, blank, col2, margin_right = st.columns([1.5, 3.5, 0.2, 3.5, 1.5])
     
     # 지사(사용자/현장) 로그인 박스
     with col1:
         st.markdown("""
         <div class='landing-box user-box'>
-            <h2>📝 사건등록 (지사/현장)</h2>
+            <h2>📝 기사 등록 (지사/현장)</h2>
             <p>현장 담당자, 출동 요원 전용 등록 페이지</p>
         </div>
         """, unsafe_allow_html=True)
@@ -180,6 +184,8 @@ def landing_page():
                     st.rerun()
                 else:
                     st.error(f"[{admin_role_select}지사] 관리자 비밀번호가 일치하지 않습니다.", icon="🚨")
+
+    st.markdown("</div>", unsafe_allow_html=True)
 
 def user_registration_page():
     col_nav1, col_nav2 = st.columns([8, 2])
