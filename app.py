@@ -470,7 +470,38 @@ def admin_dashboard_page():
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
                 export_df = filtered_df[['id', 'reported_at', 'branch', 'incident_type', 'status', 'created_by', 'service_no', 'reported_time', 'description_full']].copy()
                 export_df.columns = ['접수번호', '전산 기록일', '지사명', '사고유형', '처리상태', '근무자/현장', '식별차량/고객번호', '실제 발생시간', '상세보고내역']
+                export_df['현장사진'] = ""  # 사진이 들어갈 빈 공간
                 export_df.to_excel(writer, index=False, sheet_name='사건접수내역')
+                
+                workbook = writer.book
+                worksheet = writer.sheets['사건접수내역']
+                
+                # 엑셀 보기 좋게 너비 조정
+                worksheet.column_dimensions['I'].width = 50  # 상세내역
+                worksheet.column_dimensions['J'].width = 30  # 현장사진
+                
+                from openpyxl.drawing.image import Image as OpenpyxlImage
+                from PIL import Image
+                
+                # 데이터 행별로 높이 조절 및 사진 삽입
+                for r_idx, (_, row_data) in enumerate(filtered_df.iterrows(), start=2):
+                    worksheet.row_dimensions[r_idx].height = 100  # 사진용 셀 높이 확보
+                    
+                    media_list = row_data.get('media_files', [])
+                    if isinstance(media_list, list) and media_list:
+                        for fpath in media_list:
+                            ext = os.path.splitext(fpath)[1].lower()
+                            if ext in ['.jpg', '.jpeg', '.png'] and os.path.exists(fpath):
+                                try:
+                                    # 사진 크기를 엑셀 셀 크기에 축소 및 최적화하여 삽입
+                                    img = OpenpyxlImage(fpath)
+                                    img.width = 180
+                                    img.height = 130
+                                    cell_ref = f"J{r_idx}"
+                                    worksheet.add_image(img, cell_ref)
+                                    break # 칸 크기를 위해 대표 사진 1장만 넣음
+                                except Exception:
+                                    pass
             
             st.write("") # 마진
             st.write("")
