@@ -209,7 +209,16 @@ def user_registration_page():
             incident_type = st.selectbox("사고유형*", ["차량사고", "고객사고(도난)", "고객사고(화재)", "고객사고(침수)", "고객사고(기타)", "안전사고(단독)"])
         with col2:
             service_no = st.text_input("고객정보(상호 및 서비스번호)*", placeholder="예: (주)다성아이앤에스 (63527874)")
-            reported_time = st.text_input("사고발생(신호) 일시*", placeholder="예: 26.01.18 11:38")
+            
+            # --- 직관성 강화: 날짜 및 시간 선택 캘린더 도입 ---
+            st.markdown("<p style='font-size: 14px; margin-bottom: 0px;'>사고발생(신호) 일시*</p>", unsafe_allow_html=True)
+            col_dt1, col_dt2 = st.columns(2)
+            with col_dt1:
+                rep_date = st.date_input("사고일자", value=datetime.today().date(), label_visibility="collapsed")
+            with col_dt2:
+                rep_time = st.time_input("사고시간", value=datetime.now().time(), label_visibility="collapsed")
+            reported_time = f"{rep_date.strftime('%y.%m.%d')} {rep_time.strftime('%H:%M')}"
+            # ------------------------------------------------
             address = st.text_input("구역 / 발생 장소", placeholder="예: 301호")
             
         if incident_type == "차량사고":
