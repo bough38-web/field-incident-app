@@ -82,10 +82,10 @@ def landing_page():
     # 모바일 최적화를 위한 커스텀 CSS 강제 주입
     st.markdown("""
         <style>
-        /* 기본적으로 Streamlit 앱 요소 여백 최소화 */
+        /* 기본적으로 Streamlit 앱 요소 여백 최소화 (상단 잘림 방지위해 여백 확보) */
         .block-container {
-            padding-top: 1rem !important;
-            padding-bottom: 1rem !important;
+            padding-top: 3.5rem !important;
+            padding-bottom: 2rem !important;
         }
         /* 랜딩 박스들 반응형 CSS */
         .landing-box {
@@ -106,10 +106,18 @@ def landing_page():
         .admin-box p {
             color: #D1D5DB;
         }
+        /* 메인 타이틀 패딩 추가 */
+        .main-title {
+            text-align: center; 
+            color: #1E3A8A; 
+            margin-top: 1rem; 
+            margin-bottom: 0.5rem;
+        }
         /* 모바일 사이즈에서 h1 타이틀 크기 조정 */
         @media (max-width: 640px) {
-            h1 {
+            h1.main-title {
                 font-size: 1.5rem !important;
+                margin-top: 0.5rem;
             }
             .landing-box {
                 padding: 1rem;
@@ -118,7 +126,7 @@ def landing_page():
         </style>
     """, unsafe_allow_html=True)
     
-    st.markdown("<h1 style='text-align: center; color: #1E3A8A;'>🏢 사건·사고 통합 관제 플랫폼</h1>", unsafe_allow_html=True)
+    st.markdown("<h1 class='main-title'>🏢 사건·사고 통합 관제 플랫폼</h1>", unsafe_allow_html=True)
     st.markdown("<p style='text-align: center; color: gray;'>[지사/현장] 사건 등록 및 [본부/지사] 통계 모니터링을 위한 통합 포털입니다.</p>", unsafe_allow_html=True)
     st.write("")
     
