@@ -205,6 +205,8 @@ def user_registration_page():
                 with preview_cols[i % 4]:
                     if f.name.lower().endswith(('.jpg', '.jpeg', '.png')):
                         st.image(f, use_container_width=True)
+                    elif f.name.lower().endswith(('.mp4', '.mov')):
+                        st.video(f)
                     else:
                         st.info(f"🎥 {f.name}")
         # ----------------------------------------
@@ -430,7 +432,7 @@ def admin_dashboard_page():
     st.divider()
 
     # 차트영역
-    col_c1, col_c2 = st.columns(2)
+    col_c1, col_c2, col_c3 = st.columns(3)
     with col_c1:
         st.subheader("📍 지사별 보안 이벤트 현황")
         branch_counts = df['branch'].value_counts().reset_index()
@@ -447,6 +449,14 @@ def admin_dashboard_page():
         fig_status = px.pie(type_counts, names='사고유형', values='비율', hole=0.5, color_discrete_sequence=px.colors.qualitative.Set3)
         fig_status.update_layout(height=350)
         st.plotly_chart(fig_status, use_container_width=True)
+
+    with col_c3:
+        st.subheader("🚥 처리 상태 현황")
+        status_counts = df['status'].value_counts().reset_index()
+        status_counts.columns = ['상태', '건수']
+        fig_state = px.pie(status_counts, names='상태', values='건수', hole=0.5, color_discrete_sequence=px.colors.qualitative.Safe)
+        fig_state.update_layout(height=350)
+        st.plotly_chart(fig_state, use_container_width=True)
 
     st.divider()
 
@@ -485,7 +495,8 @@ def admin_dashboard_page():
                     filtered_df[col] = "기록없음"
                     
             with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-                export_df = filtered_df[['id', 'reported_at', 'branch', 'incident_type', 'status', 'created_by', 'service_no', 'reported_time', 'description_full']].copy()
+                # 엑셀 데이터도 UI 테이블처럼 역순(최신순)으로 정렬
+                export_df = filtered_df.iloc[::-1][['id', 'reported_at', 'branch', 'incident_type', 'status', 'created_by', 'service_no', 'reported_time', 'description_full']].copy()
                 export_df.columns = ['접수번호', '전산 기록일', '지사명', '사고유형', '처리상태', '근무자/현장', '식별차량/고객번호', '실제 발생시간', '상세보고내역']
                 export_df['현장사진'] = ""  # 사진이 들어갈 빈 공간
                 export_df.to_excel(writer, index=False, sheet_name='사건접수내역')
@@ -500,8 +511,8 @@ def admin_dashboard_page():
                 from openpyxl.drawing.image import Image as OpenpyxlImage
                 from PIL import Image
                 
-                # 데이터 행별로 높이 조절 및 사진 삽입
-                for r_idx, (_, row_data) in enumerate(filtered_df.iterrows(), start=2):
+                # 데이터 행별로 높이 조절 및 사진 삽입 (이미 역순 정렬됨)
+                for r_idx, (_, row_data) in enumerate(filtered_df.iloc[::-1].iterrows(), start=2):
                     worksheet.row_dimensions[r_idx].height = 100  # 사진용 셀 높이 확보
                     
                     media_list = row_data.get('media_files', [])
@@ -522,11 +533,31 @@ def admin_dashboard_page():
             
             st.write("") # 마진
             st.write("")
+            
+            import zipfile
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as z:
+                # 1. 엑셀 파일 추가
+                excel_filename = f"사건사고리포트_{current_role}_{datetime.now().strftime('%Y%m%d')}.xlsx"
+                z.writestr(excel_filename, buffer.getvalue())
+                
+                # 2. 미디어 파일 추가
+                for _, row_data in filtered_df.iloc[::-1].iterrows():
+                    media_list = row_data.get('media_files', [])
+                    if isinstance(media_list, list) and media_list:
+                        for fpath in media_list:
+                            if os.path.exists(fpath):
+                                # 폴더 구조 정리 (예: 업로드데이터/지사명/...)
+                                arcname = fpath
+                                if not arcname.startswith("업로드데이터"):
+                                    arcname = f"미디어_첨부파일/{os.path.basename(fpath)}"
+                                z.write(fpath, arcname=arcname)
+                                
             st.download_button(
-                label="📥 엑셀(Excel) 전송/다운",
-                data=buffer.getvalue(),
-                file_name=f"사건사고리포트_{current_role}_{datetime.now().strftime('%Y%m%d')}.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                label="📦 데이터 통합 다운로드 (엑셀 + 사진/동영상)",
+                data=zip_buffer.getvalue(),
+                file_name=f"사건사고리포트_통합_{current_role}_{datetime.now().strftime('%Y%m%d')}.zip",
+                mime="application/zip",
                 use_container_width=True,
                 type="primary"
             )
@@ -535,98 +566,124 @@ def admin_dashboard_page():
     display_df.columns = ['접수번호', '전산 접수일시', '지사명', '사고유형', '처리상태', '근무자/현장', '고객정보/차량번호']
     
     # === 동적 연동 핵심: 데이터 상태 직접 수정 (st.data_editor) ===
-    st.markdown("**💡 팁:** 아래 표에서 `처리상태` 항목을 클릭하여 바로 상태를 **업데이트** 할 수 있습니다. (접수 → 진행중 → 해결완료)")
-    edited_df = st.data_editor(
-        display_df.iloc[::-1], 
-        use_container_width=True, 
-        hide_index=True,
-        column_config={
-            "접수번호": st.column_config.TextColumn(disabled=True),
-            "전산 접수일시": st.column_config.TextColumn(disabled=True),
-            "지사명": st.column_config.TextColumn(disabled=True),
-            "사고유형": st.column_config.TextColumn(disabled=True),
-            "처리상태": st.column_config.SelectboxColumn("처리상태 (클릭하여 변경)", options=["접수", "진행중", "해결완료"], required=True),
-            "근무자/현장": st.column_config.TextColumn(disabled=True),
-            "고객정보/차량번호": st.column_config.TextColumn(disabled=True),
-        },
-        key="admin_data_editor"
-    )
-    
-    # 상태 변경점 감지 및 DB(session_state) 업데이트 로직
-    # st.data_editor 가 반환한 데이터프레임과 원본 DB를 비교하여 상태를 반영함
-    # (주의: iloc[::-1] 로 역순 표시되었던 것을 감안해야 하므로 ID를 기준으로 매핑)
-    if st.session_state.get('admin_data_editor') is not None:
-        changed_rows = st.session_state.admin_data_editor.get("edited_rows", {})
-        if changed_rows:
-            for row_idx, changes in changed_rows.items():
-                if "처리상태" in changes:
-                    new_status = changes["처리상태"]
-                    # edited_df에서 변경된 행의 접수번호(ID) 추출
-                    target_id = edited_df.iloc[row_idx]['접수번호']
-                    
-                    # session_state DB 원본 업데이트
-                    for item in st.session_state.incidents_db:
-                        if item['id'] == target_id:
-                            item['status'] = new_status
-                            break
-            # DB가 업데이트 되었으므로 UI를 리프레시하여 새 상태의 KPI/차트를 그림
-            st.rerun()
     
     st.markdown("---")
-    st.subheader("🔍 현장 정밀 보고 원문 (데이터 및 미디어 열람)")
+    st.subheader("🔍 현장 미디어 및 정밀 보고서")
     
-    if not filtered_df.empty:
-        selected_id = st.selectbox("상세 보고서를 열람할 접수번호(ID)를 선택하세요", options=filtered_df['id'].iloc[::-1].tolist())
-        selected_row = filtered_df[filtered_df['id'] == selected_id].iloc[0]
+    tab_table, tab_gallery = st.tabs(["📋 요약 테이블 뷰", "📸 현장 미디어 갤러리 뷰 (미리보기)"])
+    
+    with tab_table:
+        st.markdown("**💡 팁:** 아래 표에서 `처리상태` 항목을 클릭하여 바로 상태를 **업데이트** 할 수 있습니다. (접수 → 진행중 → 해결완료)")
+        edited_df = st.data_editor(
+            display_df.iloc[::-1], 
+            use_container_width=True, 
+            hide_index=True,
+            column_config={
+                "접수번호": st.column_config.TextColumn(disabled=True),
+                "전산 접수일시": st.column_config.TextColumn(disabled=True),
+                "지사명": st.column_config.TextColumn(disabled=True),
+                "사고유형": st.column_config.TextColumn(disabled=True),
+                "처리상태": st.column_config.SelectboxColumn("처리상태 (클릭하여 변경)", options=["접수", "진행중", "해결완료"], required=True),
+                "근무자/현장": st.column_config.TextColumn(disabled=True),
+                "고객정보/차량번호": st.column_config.TextColumn(disabled=True),
+            },
+            key="admin_data_editor"
+        )
         
-        with st.container(border=True):
-            st.markdown(f"### 🚨 [{selected_row['branch']}] {selected_row['incident_type']} (ID: {selected_row['id']})")
+        # 상태 변경점 감지 및 DB(session_state) 업데이트 로직
+        if st.session_state.get('admin_data_editor') is not None:
+            changed_rows = st.session_state.admin_data_editor.get("edited_rows", {})
+            if changed_rows:
+                for row_idx, changes in changed_rows.items():
+                    if "처리상태" in changes:
+                        new_status = changes["처리상태"]
+                        target_id = edited_df.iloc[row_idx]['접수번호']
+                        for item in st.session_state.incidents_db:
+                            if item['id'] == target_id:
+                                item['status'] = new_status
+                                break
+                st.rerun()
+
+        st.divider()
+        st.markdown("##### 📝 개별 상세 보고서 원문 조회")
+        if not filtered_df.empty:
+            selected_id = st.selectbox("상세 보고서를 열람할 접수번호(ID)를 선택하세요", options=filtered_df['id'].iloc[::-1].tolist())
+            selected_row = filtered_df[filtered_df['id'] == selected_id].iloc[0]
             
-            # --- 효율성 강화: 원클릭 빠른 상태 변경 버튼 ---
-            st.write("")
-            btn_col1, btn_col2, btn_col3 = st.columns(3)
-            with btn_col1:
-                st.markdown("**⚡ 빠른 조치 상태 업데이트:**")
-            with btn_col2:
-                if st.button("🚀 '진행중' 처리", key="s_prog", use_container_width=True):
-                    for item in st.session_state.incidents_db:
-                        if item['id'] == selected_id:
-                            item['status'] = "진행중"
-                    st.rerun()
-            with btn_col3:
-                if st.button("✅ '해결완료' 종결", key="s_done", type="primary", use_container_width=True):
-                    for item in st.session_state.incidents_db:
-                        if item['id'] == selected_id:
-                            item['status'] = "해결완료"
-                    st.rerun()
-            st.divider()
+            with st.container(border=True):
+                st.markdown(f"### 🚨 [{selected_row['branch']}] {selected_row['incident_type']} (ID: {selected_row['id']})")
+                btn_col1, btn_col2, btn_col3 = st.columns(3)
+                with btn_col1: st.markdown("**⚡ 빠른 조치 상태 업데이트:**")
+                with btn_col2:
+                    if st.button("🚀 '진행중' 처리", key="s_prog_table", use_container_width=True):
+                        for item in st.session_state.incidents_db:
+                            if item['id'] == selected_id: item['status'] = "진행중"
+                        st.rerun()
+                with btn_col3:
+                    if st.button("✅ '해결완료' 종결", key="s_done_table", type="primary", use_container_width=True):
+                        for item in st.session_state.incidents_db:
+                            if item['id'] == selected_id: item['status'] = "해결완료"
+                        st.rerun()
+                st.divider()
+                
+                st.markdown(f"**담당 현장 요원:** {selected_row['created_by']} &nbsp;&nbsp;|&nbsp;&nbsp; **현재 상태:** `{selected_row['status']}`")
+                st.markdown(f"**식별 정보:** {selected_row['service_no']} &nbsp;&nbsp;|&nbsp;&nbsp; **사고/신호 일시:** {selected_row['reported_time']}")
+                st.divider()
+                st.text(selected_row.get('description_full', '상세 내용이 접수되지 않았습니다.'))
+                
+                media_list = selected_row.get('media_files', [])
+                if isinstance(media_list, list) and media_list:
+                    st.markdown("#### 📸 현장 첨부 미디어")
+                    img_cols = st.columns(4)
+                    col_idx = 0
+                    for fpath in media_list:
+                        if os.path.exists(fpath):
+                            ext = os.path.splitext(fpath)[1].lower()
+                            with img_cols[col_idx % 4]:
+                                if ext in ['.jpg', '.jpeg', '.png']:
+                                    st.image(fpath, use_container_width=True, caption=os.path.basename(fpath))
+                                elif ext in ['.mp4', '.mov']:
+                                    with open(fpath, 'rb') as vf:
+                                        st.video(vf.read(), format=f'video/{ext.strip(".")}')
+                            col_idx += 1
+                        else:
+                            st.warning(f"경로를 찾을 수 없음: {fpath}")
+
+    with tab_gallery:
+        st.markdown("### 🖼️ 접수된 사진 & 동영상 모아보기")
+        if filtered_df.empty:
+            st.info("조건에 맞는 사건이 없습니다.")
+        else:
+            has_media_count = 0
+            for idx, row in filtered_df.iloc[::-1].iterrows():
+                media_list = row.get('media_files', [])
+                if isinstance(media_list, list) and len(media_list) > 0:
+                    has_media_count += 1
+                    with st.expander(f"📁 [{row['status']}] {row['branch']} - {row['incident_type']} (ID: {row['id']} / {row['created_by']})", expanded=True):
+                        st.markdown(f"**사고일시:** {row['reported_time']} | **식별정보:** {row['service_no']}")
+                        gal_cols = st.columns(4)
+                        c_idx = 0
+                        for fpath in media_list:
+                            if os.path.exists(fpath):
+                                ext = os.path.splitext(fpath)[1].lower()
+                                with gal_cols[c_idx % 4]:
+                                    if ext in ['.jpg', '.jpeg', '.png']:
+                                        st.image(fpath, use_container_width=True, caption=os.path.basename(fpath))
+                                    elif ext in ['.mp4', '.mov']:
+                                        try:
+                                            with open(fpath, 'rb') as vf:
+                                                v_bytes = vf.read()
+                                            st.video(v_bytes, format=f'video/{ext.strip(".")}')
+                                            st.caption(f"🎥 {os.path.basename(fpath)}")
+                                        except Exception as e:
+                                            st.error(f"비디오 재생 오류: {e}")
+                                c_idx += 1
+                            else:
+                                st.warning(f"파일 유실: {fpath}")
+                        st.divider()
             
-            st.markdown(f"**담당 현장 요원:** {selected_row['created_by']} &nbsp;&nbsp;|&nbsp;&nbsp; **현재 상태:** `{selected_row['status']}`")
-            st.markdown(f"**식별 정보:** {selected_row['service_no']} &nbsp;&nbsp;|&nbsp;&nbsp; **사고/신호 일시:** {selected_row['reported_time']}")
-            st.divider()
-            
-            detail_text = selected_row.get('description_full', '상세 내용이 접수되지 않았습니다.')
-            st.text(detail_text) 
-            
-            # 미디어 출력 (사진, 동영상 작게 4개 칼럼으로 정렬)
-            media_list = selected_row.get('media_files', [])
-            if isinstance(media_list, list) and media_list:
-                st.markdown("#### 📸 현장 첨부 미디어")
-                img_cols = st.columns(4)
-                col_idx = 0
-                for fpath in media_list:
-                    if os.path.exists(fpath):
-                        ext = os.path.splitext(fpath)[1].lower()
-                        with img_cols[col_idx % 4]:
-                            if ext in ['.jpg', '.jpeg', '.png']:
-                                st.image(fpath, use_container_width=True, caption=os.path.basename(fpath))
-                            elif ext in ['.mp4', '.mov']:
-                                st.video(fpath) # st.video는 width가 container_width에 맞춰짐
-                        col_idx += 1
-                    else:
-                        st.warning(f"경로를 찾을 수 없음: {fpath}")
-    else:
-        st.info("조건에 맞는 사건이 없습니다.")
+            if has_media_count == 0:
+                st.info("📸 현재 선택된 조건에 첨부된 사진/동영상이 있는 사건이 없습니다.")
 
 
 # ==========================================
