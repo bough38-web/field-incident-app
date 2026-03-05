@@ -1,0 +1,12 @@
+OUTSIDE:
+  folder: 01_외관
+  label_ko: 외관
+METER:
+  folder: 02_계량기
+  label_ko: 계량기
+SCENE:
+  folder: 03_현장
+  label_ko: 현장
+ETC:
+  folder: 99_기타
+  label_ko: 기타
